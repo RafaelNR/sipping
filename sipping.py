@@ -77,7 +77,6 @@ class colors:
         cyan='\033[46m'
         lightgrey='\033[47m'
 
-
 print(colors.reset)
 
 # handler for ctrl+c / SIGINT
