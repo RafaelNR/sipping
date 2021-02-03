@@ -120,11 +120,10 @@ def printstats():
 
 	if v_longest_run > 0:
 		print ("\t[Estatística de perda de pacotes]")
-		print ("\t[Solicitação mais longa com perda: {}]".format(str(v_longest_run)))
+		print ("\t[Solicitação mais longa com perda: {0}]".format(str(v_longest_run)))
 	if v_last_run_loss > 0:
-		print ("\t[Última solicitação com perda: {}]".format(str(v_last_run_loss)))
-	if v_current_run_loss > 0:
-		print ("\t[Solicitações com perda: {}]".format(str(v_current_run_loss)))
+		print ("\t[Última solicitação com perda: {0}]".format(str(v_last_run_loss)))
+		print ("\t[Solicitações com perda: {0}]".format(str(v_current_run_loss)))
 
 	v_avg = calcAvg()
 	ping_min = v_min if v_min != float("inf") else 0
