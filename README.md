@@ -80,4 +80,4 @@ Caso de instação do python
 <!-- CONTRIBUTING -->
 ## Contribuição
 
-SIPPING tem como base o projeto original, https://gekk.info/sipping/, porém com regionalidade e melhoria de layout e desempenho;
+SIPPING tem como base o projeto original, https://gekk.info/sipping/, porém com tradução pt-br, melhoria de layout e desempenho e correção de bugs no socket de comunicação e no processo de log;

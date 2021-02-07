@@ -153,87 +153,112 @@ def handleArgs():
 	parser.add_argument("-S", nargs="?", default=True, help="Não exibe estatística a cada 5 pings, somente no Ctrl+C.")
 	return vars(parser.parse_args())
 
-# Trata a option quando usa -X e -x
-def handleOptions():
 
-	return """OPTIONS sip:{domain} SIP/2.0
-Via: SIP/2.0/UDP {lanip}:{localport}
-To: "SIP Ping"<sip:{userid}@{domain}>
-From: "SIP Ping"<sip:{userid}@{domain}>
-Call-ID: {callid}
-CSeq: 1 OPTIONS
-Max-forwards: {ttl}
-X-redundancy: Request
-Content-Length: 0
-
-		""".format(domain=v_domain, lanip=v_lanip, userid=v_userid, localport=v_localport, callid=v_callid, ttl=v_ttl)
-
-
-def handleMsg(tipo):
-
-	def undeline(text):
-		return colors.underline + str(text) + colors.reset
-
-	if(tipo == 'Enviado'):
-		print (colors.fg.blue+"> "+ colors.reset +"[{time}] Enviado para [{host}:{port}]".format(host=undeline(v_sbc),port=undeline(v_port),time=timef()))
-	elif (tipo == 'Resposta'):
-		print(colors.fg.green+"< "+ colors.reset +"[{time}] Resposta de {host} ({diff}ms): {response}".format(host=undeline(addr[0]), diff=diff, time=timef(), response=v_response))
-	elif (tipo == 'Error'):
-		print (colors.fg.red+"X "+ colors.reset +"[{time}] Tempo limite para resposta do IP: [{host}:{port}]".format(host=undeline(v_sbc),port=undeline(v_port), time=timef()))
-	elif (tipo == 'Log'):
-		print()
 
 def generate_callerID(length=8):
 	return ''.join([str(random.randint(0, 9)) for i in range(length)])
 
 
-# Time Format
-def timef(timev=None):
-			if timev == None:
-							return datetime.now().strftime("%d/%m/%y %H:%M:%S")
-			else:
-							return datetime.fromtimestamp(timev)
+class SipPing:
+	
+	def __init__(self):
+		self.args = handleArgs()
+		self.initArgs()
+		self.logPath = self.createLogFile()
+		self.setVariables()
 
+	def initArgs(self):
+		self.interval = int(self.args["I"]) # Tempo em milissegundos entre pings
+		self.fromip = self.args["i"] # IP que envia a solicitação
+		self.sbc = self.handleHost(self.args["host"]) # IP que recebe a solicitação
+		self.userid = self.args["u"] # UserID que envia a requisição
+		self.port = int(self.args["p"])
+		self.domain = self.args["d"]
+		self.ttl = self.args["ttl"]
+		self.timeout = int(self.args["t"])
+		self.rawsend = self.args["x"] == None
+		self.rawrecv = self.args["X"] == None
+		self.quiet = not self.args["q"]
+		self.nostats = not self.args["S"]
+		self.logFile = self.args["w"]
+
+	def setVariables(self):
+		self.recd = 0
+		self.lost = 0
+		self.longest_run = 0
+		self.last_run_loss = 0
+		self.current_run_loss = 0
+		self.last_lost = "never"
+		self.history = []
+		self.min = float("inf")
+		self.max = float("-inf")
+		self.iter = 0
+		self.response = ''
+		self.current_results = []
+		self.callid = generate_callerID(length=10)
+
+	def createLogFile(self):
+		if self.logFile == "[[default]]":
+			if not os.path.exists("logs"): os.mkdir("logs") # Cria o diretorio logs se não existir
+			return "logs/{ip}.log".format(ip=self.sbc)
+		else:
+			return self.logFile
+
+	def handleHost(self,host):
+		if handleIP(host) is None:
+			try:
+				return socket.getaddrinfo(host, 5060)[0][4][0]
+			except Exception as error:
+				print(error)
+				sys.exit(1)
+		else:
+			return host
+
+	def handleMsg(self,tipo):
+
+		def undeline(text):
+			return colors.underline + str(text) + colors.reset
+
+		if(tipo == 'Enviado'):
+			print (colors.fg.blue+"> "+ colors.reset +"[{time}] Enviado para [{host}:{port}]".format(host=undeline(self.sbc),port=undeline(self.port),time=self.timef()))
+		elif (tipo == 'Resposta'):
+			print(colors.fg.green+"< "+ colors.reset +"[{time}] Resposta de {host} ({diff}ms): {response}".format(host=undeline(addr[0]), diff=diff, time=self.timef(), response=self.response))
+		elif (tipo == 'Error'):
+			print (colors.fg.red+"X "+ colors.reset +"[{time}] Tempo limite para resposta do IP: [{host}:{port}]".format(host=undeline(self.sbc),port=undeline(self.port), time=self.timef()))
+		elif (tipo == 'Log'):
+			print()
+
+	# Time Format
+	def timef(self,timev=None):
+		if timev == None:
+			return datetime.now().strftime("%d/%m/%y %H:%M:%S")
+		else:
+			return datetime.fromtimestamp(timev)
+
+			
+	def Teste(self):
+		print(self.sbc)
+
+	# Trata a option quando usa -X e -x
+	def handleOptions(self):
+
+		return """OPTIONS sip:{domain} SIP/2.0
+	Via: SIP/2.0/UDP {lanip}:{localport}
+	To: "SIP Ping"<sip:{userid}@{domain}>
+	From: "SIP Ping"<sip:{userid}@{domain}>
+	Call-ID: {callid}
+	CSeq: 1 OPTIONS
+	Max-forwards: {ttl}
+	X-redundancy: Request
+	Content-Length: 0
+
+			""".format(domain=self.domain, lanip=self.lanip, userid=self.userid, localport=self.localport, callid=self.callid, ttl=self.ttl)
 
 ## MAIN
 if __name__ == "__main__":
 	
-	args = handleArgs()
-	# populate data from commandline
-	# anything unspecified on the commandline is set to a default value by the parser
-	v_interval = int(args["I"])
-	v_fromip = args["i"]
-	v_sbc = args["host"]
-
-	# VERIFICA SE O IP DO HOST É VALIDO
-	if handleIP(v_sbc) is None:
-		# the user entered a hostname; resolve it
-		try:
-			v_sbc = socket.getaddrinfo(v_sbc, 5060)[0][4][0]
-		# socket.gaierror catches socket-specific exceptions but I think we can go without
-		#except socket.gaierror as error:
-		except Exception as error:
-			# dns failure or no response
-			print(error)
-			# print error.strerror
-			sys.exit(1)
-
-	v_userid = args["u"]
-	v_port = int(args["p"])
-	v_domain = args["d"]
-	v_ttl = args["ttl"]
-	v_timeout = int(args["t"])
-	v_rawsend = args["x"] == None
-	v_rawrecv = args["X"] == None
-	v_quiet = not args["q"]
-	v_nostats = not args["S"]
-
-	if args["w"] == "[[default]]":
-		if not os.path.exists("logs"): os.mkdir("logs")
-			
-		v_logpath = "logs/{ip}.log".format(ip=v_sbc)
-	else:
-		v_logpath = args["w"]
+	SipPing = SipPing()
+	SipPing.Teste()
 
 	# Caso for usar CSV descomentar.
 	# # if log output is enabled, ensure CSV has header
@@ -246,55 +271,37 @@ if __name__ == "__main__":
 
 	# register signal handler for ctrl+c since we're ready to start
 	signal.signal(signal.SIGINT, signal_handler)
-	if not v_quiet: print("Pressione Ctrl+C para sair.");
-
-	# zero out statistics variables
-	v_recd = 0
-	v_lost = 0
-	v_longest_run = 0
-	v_last_run_loss = 0
-	v_current_run_loss = 0
-	last_lost = "never"
-	l_history = []
-	v_min = float("inf")
-	v_max = float("-inf")
-	v_iter = 0
-
-	# empty list of last 5 pings
-	l_current_results = []
+	if not SipPing.quiet: print("Pressione Ctrl+C para sair.")
 
 	# start the ping loop
 	while 1:
 		# create a socket
 		skt_sbc = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 		skt_sbc.bind(("0.0.0.0", 0))
-		skt_sbc.settimeout(v_timeout / 1000.0)
-		# find out what port we're transmitting from to correlate the return packet
+		skt_sbc.settimeout(SipPing.timeout / 1000.0)
 		v_localport = skt_sbc.getsockname()[1]
-		# find out what IP we're sourcing from to populate the Via
-		if v_fromip != "*":
-			v_lanip = v_fromip
+
+		
+		if SipPing.fromip != "*":
+			v_lanip = SipPing.fromip
 		else:
 			v_lanip = socket.gethostbyname(socket.gethostname()) 
 
 		# latency is calculated from this timestamp
 		start = time.time()
 
-		# cria um callerID 
-		v_callid = generate_callerID(length=10)
-
 		# Options para fazer a solicitação e Call
-		v_register_one = handleOptions()
+		v_register_one = SipPing.handleOptions()
 
 		# print transmit announcement
-		if not v_quiet: handleMsg('Enviado')
+		if not SipPing.quiet: handleMsg('Enviado')
 
 		# if -x was passed, print the transmitted packet
-		if v_rawsend:
+		if SipPing.rawsend:
 			print (v_register_one)	
 
 		# send the packet
-		skt_sbc.sendto(v_register_one, (v_sbc, v_port))
+		skt_sbc.sendto(v_register_one, (SipPing.sbc, SipPing.port))
 
 		start = time.time()
 		# wait for response
@@ -307,58 +314,58 @@ if __name__ == "__main__":
 			diff = float("%.2f" % ((end - start) * 1000.0))
 			
 			# pick out the first line in order to get the SIP response code
-			v_response = data.split("\n")[0]
+			SipPing.response = data.split("\n")[0]
 			
 			# print success message and response code
-			if not v_quiet: handleMsg("Resposta")
+			if not SipPing.quiet: handleMsg("Resposta")
 
 			# if -X was passed, print the received packet
-			if v_rawrecv:
+			if SipPing.rawrecv:
 				print (data)
 
 			# log success
-			l_current_results.append("[{time}] > [{host}] - [Último Ping: {diff}ms] - Resposta: {response}".format(host=addr[0], diff=diff, time=timef(), timestamp=time.time(), id=v_callid, response=v_response))
+			SipPing.current_results.append("[{time}] > [{host}] - [Último Ping: {diff}ms] - Resposta: {response}".format(host=addr[0], diff=diff, time=timef(), timestamp=time.time(), id=v_callid, response=v_response))
 
 			# update statistics
-			l_history.append(diff)
-			if len(l_history) > 200:
-				l_history = l_history[1:]
-			if diff < v_min:
-				v_min = diff
+			SipPing.history.append(diff)
+			if len(SipPing.history) > 200:
+				SipPing.history = SipPing.history[1:]
+			if diff < SipPing.min:
+				SipPing.min = diff
 			if diff > v_max:
-				v_max = diff;
-			v_recd = v_recd + 1
-			if v_current_run_loss > 0:
-				v_last_run_loss = v_current_run_loss
-				if v_last_run_loss > v_longest_run:
-					v_longest_run = v_last_run_loss
-				v_current_run_loss = 0
+				SipPing.max = diff;
+			SipPing.recd = SipPing.recd + 1
+			if SipPing.current_run_loss > 0:
+				SipPing.last_run_loss = SipPing.current_run_loss
+				if SipPing.last_run_loss > SipPing.longest_run:
+					SipPing.longest_run = SipPing.last_run_loss
+				SipPing.current_run_loss = 0
 		except socket.timeout:
 
 			# timed out; print a drop
-			if not v_quiet: handleMsg("Error")
+			if not SipPing.quiet: handleMsg("Error")
 			# log a drop
-			l_current_results.append("{time},{timestamp},{host},drop,{id},drop".format(host=v_sbc, time=timef(), timestamp=time.time(), id=v_callid))
+			SipPing.current_results.append("{time},{timestamp},{host},drop,{id},drop".format(host=v_sbc, time=timef(), timestamp=time.time(), id=v_callid))
 			
 			# increment statistics
-			v_lost = v_lost + 1
-			v_current_run_loss = v_current_run_loss + 1
+			SipPing.lost = SipPing.lost + 1
+			SipPing.current_run_loss = SipPing.current_run_loss + 1
 
-		v_iter = v_iter + 1
+		SipPing.iter = SipPing.iter + 1
 		# if it's been five packets, print stats and write logfile
-		if v_iter > 4:
+		if SipPing.iter > 4:
 			# print stats to screen
-			if not v_nostats:
+			if not SipPing.nostats:
 				printstats()
 			
 			# if logging is enabled, append stats to logfile
-			if v_logpath != "*":
-				f_log = open(v_logpath, "a")
+			if SipPing.logpath != "*":
+				f_log = open(SipPing.logpath, "a")
 				f_log.write("\n" + ("\n".join(l_current_results)))
 				f_log.close()
-			l_current_results = []
+			SipPing.current_results = []
 
-			v_iter = 0
+			SipPing.iter = 0
 
 		# pause for user-requested interval before sending next packet
-		time.sleep(v_interval / 1000.0)
+		time.sleep(SipPing.interval / 1000.0)
